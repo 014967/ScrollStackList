@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideIn
+import androidx.compose.animation.slideOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -110,8 +111,17 @@ class MainActivity : ComponentActivity() {
                             childStackModifier = Modifier
                                 .padding(horizontal = 20.dp)
                                 .fillMaxWidth(),
-                            itemHeight = composeHeight,
-                            moreBarPadding = moreBarPadding,
+                            moreItemContent = {
+                                MoreBar(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.99f)
+                                        .padding(horizontal = 10.dp)
+                                        .padding(top = 3.dp)
+                                        .background(color = Color.White.copy(alpha = 0.8f), shape = RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .height(composeHeight),
+                                )
+                            },
                             spacerHeight = spacerHeight,
                             customItemBackgroundColor = Color.White,
 
@@ -129,11 +139,10 @@ fun <T>ScrollStackList(
     modifier: Modifier = Modifier,
     stackItems: ImmutableList<Group<T>>,
     itemContent: @Composable (Child<T>) -> Unit,
+    moreItemContent: @Composable () -> Unit,
     topStackModifier: Modifier = Modifier,
     childStackModifier: Modifier = Modifier,
-    itemHeight: Dp,
     spacerHeight: Dp,
-    moreBarPadding: Dp,
     customItemBackgroundColor: Color,
 ) {
     val expandableState = remember {
@@ -227,12 +236,7 @@ fun <T>ScrollStackList(
                         itemAppeared = itemAppeared,
                         expandableState = expandableState,
                         itemContent = itemContent,
-                        itemHeight = itemHeight,
-                        moreBarPadding = moreBarPadding,
-                        isExpandedColumn = isExpandedColumn,
-                        updateExpandableColumn = {
-                            isExpandedColumn = it
-                        },
+                        moreItemContent = moreItemContent,
 
                     )
                 }
@@ -266,7 +270,7 @@ fun <T>ScrollStackList(
                         }
 
                         Box(
-                            modifier = childStackModifier.animateItemPlacement().alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex)//.background(animateBackground, RoundedCornerShape(10.dp)),
+                            modifier = childStackModifier.animateItemPlacement().alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
                         ) {
                             itemContent(child)
                         }
@@ -284,10 +288,7 @@ fun <T>LazyColumnItem(
     content: Group<T>,
     expandableState: SnapshotStateMap<String, Boolean>,
     itemContent: @Composable (Child<T>) -> Unit,
-    moreBarPadding: Dp,
-    itemHeight: Dp,
-    isExpandedColumn: ExpandState,
-    updateExpandableColumn: (ExpandState) -> Unit,
+    moreItemContent: @Composable () -> Unit,
 
 ) {
     Column(
@@ -325,29 +326,12 @@ fun <T>LazyColumnItem(
                                 visibilityThreshold = IntOffset.VisibilityThreshold,
                             ),
                         ),
+                        exit = slideOut(
+                            targetOffset = { IntOffset(0, it.height / 2) },
+                        ),
                     ) {
-                        if (content.child.size == 2) {
-                            MoreBar(
-                                modifier = modifier
-                                    .fillMaxSize(0.9f)
-                                    .padding(top = moreBarPadding)
-                                    .height(itemHeight),
-                            )
-                        } else {
-                            if (content.child.size > 2) {
-                                MoreBar(
-                                    modifier = modifier
-                                        .fillMaxSize(0.8f)
-                                        .padding(top = moreBarPadding * 2)
-                                        .height(itemHeight),
-                                )
-                                MoreBar(
-                                    modifier = modifier
-                                        .fillMaxSize(0.9f)
-                                        .padding(top = moreBarPadding)
-                                        .height(itemHeight),
-                                )
-                            }
+                        if (content.child.size >= 2) {
+                            moreItemContent()
                         }
                     }
                 }
@@ -361,19 +345,9 @@ fun <T>LazyColumnItem(
 fun MoreBar(
     modifier: Modifier = Modifier,
 ) {
-    val moreNotificationShape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
     Row(
-        modifier = modifier
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFAFAFA).copy(alpha = 0.9f),
-                        Color.LightGray,
-                    ),
-                ),
-                shape = moreNotificationShape,
-            )
-            .clip(shape = moreNotificationShape),
+        modifier = modifier,
+
     ) {}
 }
 
