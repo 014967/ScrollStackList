@@ -4,10 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,14 +19,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,35 +32,41 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Alignment.Companion.BottomCenter
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.example.scrollstacklist.ui.theme.ScrollStackListTheme
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -105,6 +113,7 @@ class MainActivity : ComponentActivity() {
                             itemHeight = composeHeight,
                             moreBarPadding = moreBarPadding,
                             spacerHeight = spacerHeight,
+                            customItemBackgroundColor = Color.White,
 
                         )
                     }
@@ -114,7 +123,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, FlowPreview::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun <T>ScrollStackList(
     modifier: Modifier = Modifier,
@@ -125,6 +134,7 @@ fun <T>ScrollStackList(
     itemHeight: Dp,
     spacerHeight: Dp,
     moreBarPadding: Dp,
+    customItemBackgroundColor: Color,
 ) {
     val expandableState = remember {
         mutableStateMapOf<String, Boolean>()
@@ -138,19 +148,9 @@ fun <T>ScrollStackList(
 
     val scrollState = rememberLazyListState()
 
-    var columnHeightDp by remember {
-        mutableStateOf(0.dp)
-    }
-
-//    var itemCount by remember {
-//        mutableStateOf(0)
-//    }
-
-    val lastVisibleItemIndex by remember {
-        derivedStateOf {
-            scrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        }
-    }
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+    val threshold = screenHeight.times(0.8f)
 
     LaunchedEffect(
         key1 = stackItems,
@@ -165,84 +165,66 @@ fun <T>ScrollStackList(
         }
     }
 
-//    LaunchedEffect(key1 = columnHeightDp) {
-//        // 나누기는 Item 높이는 전체 /  ( 아이템 정했던 크기 + moreBar + Spacer)
-//        itemCount = (columnHeightDp / (itemHeight + moreBarPadding + spacerHeight)).toInt()
-//        // TODO 만약 아이템이 열린다면 itemCount다시 계산해야함.
-//    }
-
-    var dragOffset by remember { mutableStateOf(0f) }
-
-    val debounceState = remember {
-        MutableSharedFlow<() -> Unit>(
-            replay = 0,
-            extraBufferCapacity = 1,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
-    }
-
-    LaunchedEffect(Unit) {
-        debounceState
-            .debounce(300L)
-            .collect { onClick ->
-                when (isExpandedColumn) {
-                    ExpandState.NONE -> {
-                        isExpandedColumn = ExpandState.SMALL
-                    }
-                    ExpandState.SMALL -> {
-                        isExpandedColumn = ExpandState.FULL
-                    }
-                    ExpandState.FULL -> {
-                    }
-                }
-            }
-    }
-
     Box(
         modifier = Modifier.fillMaxSize(),
-//            .scrollable(
-//                orientation = Orientation.Vertical,
-//                state = rememberScrollableState { delta ->
-//                    dragOffset += delta
-//                    if (dragOffset < -150) {
-//                        debounceState.tryEmit { }
-//                    }
-//                    dragOffset
-//                },
-//            ),
-
     ) {
         LazyColumn(
-            modifier = modifier,
+            modifier = modifier.graphicsLayer {
+                alpha = 0.99f
+            }.drawWithContent {
+                val brush = Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent.copy(alpha = 1f),
+                        Color.Transparent.copy(alpha = 1f),
+                        Color.Transparent.copy(alpha = 1f),
+                        Color.Transparent.copy(alpha = 1f),
+                        Color.Transparent.copy(alpha = 0f),
+                    ),
+                )
+                drawContent()
+                drawRect(
+                    brush = brush,
+                    blendMode = BlendMode.DstIn,
+                )
+            },
             state = scrollState,
+            verticalArrangement = Arrangement.spacedBy(spacerHeight),
+
         ) {
             stackItems.forEachIndexed { index, content ->
                 item(key = index) {
-                    var itemAppeared by rememberSaveable(index.toString()) { mutableStateOf(false) }
+                    val density = LocalDensity.current
+                    var animateFlag by rememberSaveable { mutableStateOf(true) }
+                    val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                    val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
+                    val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                    val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                    val animateBackground by animateColorAsState(targetValue = if (animateFlag) Color.Transparent else customItemBackgroundColor, label = "")
+                    var itemAppeared by rememberSaveable { mutableStateOf(false) }
 
-                    LaunchedEffect(Unit) {
-                        itemAppeared = true
+                    LaunchedEffect(!animateFlag) {
+                        if (!animateFlag) {
+                            itemAppeared = true
+                        }
                     }
 
-                    val animateOffset by animateDpAsState(
-                        targetValue = if (lastVisibleItemIndex > (index + 1)) 0.dp else if (lastVisibleItemIndex == index + 1) (-50).dp else (-100).dp,
-                        label = "",
-                    )
-
-                    val animateScale by animateFloatAsState(
-                        targetValue = if (lastVisibleItemIndex > (index + 1)) 1f else if (lastVisibleItemIndex == index + 1) 0.8f else 0f,
-                        animationSpec = tween(durationMillis = 500),
-                        label = "",
-                    )
-                    val animateZIndex by animateFloatAsState(
-                        targetValue = if (lastVisibleItemIndex > (index + 1)) 1f else if (lastVisibleItemIndex == index + 1) 0.8f else 0f,
-                        label = "",
-                    )
+                    LaunchedEffect(scrollState) {
+                        snapshotFlow {
+                            scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
+                        }.collectLatest { offset ->
+                            if (offset == Integer.MAX_VALUE) {
+                                animateFlag = true
+                            } else {
+                                val offsetInDp = with(density) { offset.toDp() }
+                                animateFlag = offsetInDp > threshold
+                            }
+                        }
+                    }
 
                     LazyColumnItem(
-                        modifier = topStackModifier.scale(animateScale).offset(y = animateOffset).zIndex(animateZIndex).alpha(animateZIndex),
-                        itemAppeared = itemAppeared,
+                        modifier = topStackModifier.animateItemPlacement().alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
                         content = content,
+                        itemAppeared = itemAppeared,
                         expandableState = expandableState,
                         itemContent = itemContent,
                         itemHeight = itemHeight,
@@ -253,18 +235,39 @@ fun <T>ScrollStackList(
                         },
 
                     )
-
-                    Spacer(modifier = Modifier.height(if (lastVisibleItemIndex <= index) { 0.dp } else { spacerHeight }))
                 }
 
                 if (expandableState.containsKey(content.key) && expandableState[content.key] == true && content.child.size != 1) {
-                    itemsIndexed(items = content.child.drop(1), key = { index, it -> it.key }) { index, child ->
-                        Box(
-                            modifier = childStackModifier.animateItemPlacement(),
-                        ) {
-                            LaunchedEffect(Unit) {
-                                println("아이템 로그 index $index")
+                    itemsIndexed(items = content.child.drop(1), key = { childIndex, it -> it.key }) { childIndex, child ->
+
+                        val density = LocalDensity.current
+                        var animateFlag by rememberSaveable { mutableStateOf(false) }
+                        val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                        val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
+                        val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                        val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                        var itemAppeared by rememberSaveable { mutableStateOf(false) }
+
+                        LaunchedEffect(Unit) {
+                            itemAppeared = true
+                        }
+
+                        LaunchedEffect(scrollState) {
+                            snapshotFlow {
+                                scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == child.key }?.offset ?: 0
+                            }.collectLatest { offset ->
+                                if (offset == Integer.MAX_VALUE) {
+                                    animateFlag = true
+                                } else {
+                                    val offsetInDp = with(density) { offset.toDp() }
+                                    animateFlag = offsetInDp > threshold
+                                }
                             }
+                        }
+
+                        Box(
+                            modifier = childStackModifier.animateItemPlacement().alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex)//.background(animateBackground, RoundedCornerShape(10.dp)),
+                        ) {
                             itemContent(child)
                         }
                     }
@@ -289,18 +292,6 @@ fun <T>LazyColumnItem(
 ) {
     Column(
         modifier = modifier.clickable {
-//            when (isExpandedColumn) {
-//                ExpandState.FULL -> {
-//                }
-//                ExpandState.SMALL -> {
-//                    updateExpandableColumn(ExpandState.FULL)
-//                    return@clickable
-//                }
-//                ExpandState.NONE -> {
-//                    updateExpandableColumn(ExpandState.SMALL)
-//                    return@clickable
-//                }
-//            }
             if (expandableState.containsKey(content.key)) {
                 expandableState[content.key]?.let { flag ->
                     expandableState[content.key] = !flag
@@ -312,6 +303,7 @@ fun <T>LazyColumnItem(
     ) {
         AnimatedVisibility(
             visible = itemAppeared,
+            enter = fadeIn(),
         ) {
             if (expandableState.containsKey(content.key) && expandableState[content.key] == false && content.child.size != 1) {
                 Row(
@@ -320,14 +312,19 @@ fun <T>LazyColumnItem(
                     var barAppeared by rememberSaveable { mutableStateOf(false) }
 
                     LaunchedEffect(Unit) {
-//                        println("로그 LauncehdEffect ${content.key}")
                         barAppeared = true
                     }
 
                     AnimatedVisibility(
                         visible = barAppeared,
                         modifier = Modifier.fillMaxWidth(),
-                        enter = slideInVertically(),
+                        enter = slideIn(
+                            initialOffset = { IntOffset(0, (it.height / 2)) },
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMediumLow,
+                                visibilityThreshold = IntOffset.VisibilityThreshold,
+                            ),
+                        ),
                     ) {
                         if (content.child.size == 2) {
                             MoreBar(
@@ -403,13 +400,23 @@ fun updateClickable(clickableState: SnapshotStateMap<String, Boolean>, key: Stri
     clickableState[key] = flag
 }
 
+data class DpState(var value: Dp)
+object DpStateSaver : Saver<MutableState<DpState>, Float> {
+    override fun restore(value: Float): MutableState<DpState>? {
+        return mutableStateOf(DpState(value.dp))
+    }
+
+    override fun SaverScope.save(value: MutableState<DpState>): Float? {
+        return value.value.value.value
+    }
+}
 val dummyList: MutableList<Group<String>> = mutableListOf<Group<String>>().apply {
     (1..100).forEach {
         add(
             Group(
                 key = "$it",
                 child = mutableListOf<Child<String>>().apply {
-                    (1..100).forEach { key ->
+                    (1..10).forEach { key ->
                         add(
                             Child(
                                 key = "$it-$key",
