@@ -181,7 +181,6 @@ fun <T>ScrollStackList(
             verticalArrangement = Arrangement.spacedBy(spacerHeight),
 
         ) {
-            val composeHeight = 50.dp
             stackItems.forEachIndexed { index, content ->
                 item(key = index) {
                     val density = LocalDensity.current
@@ -193,20 +192,17 @@ fun <T>ScrollStackList(
                     var alphaState by rememberSaveable { mutableStateOf(0f) }
                     var itemAppeared by rememberSaveable { mutableStateOf(false) }
 
-                    LaunchedEffect(!animateFlag) {
-                        if (!animateFlag) {
-                            itemAppeared = true
-                        }
+                    LaunchedEffect(Unit) {
+                        itemAppeared = true
                     }
 
-                    // Todo 초기 background랑 alpha를 전부 비게 하면 되지 않을까? , background = Color.Transparent , alpha 도 처음에 0이였다가 1f로 바뀌도록
                     LaunchedEffect(scrollState) {
                         snapshotFlow {
                             scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
                         }.collectLatest { offset ->
 
                             val offsetInDp = with(density) { offset.toDp() }
-                            alphaState = if (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0 )) 0f else 1f // -> 이게 되네
+                            alphaState = if (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0)) 0f else 1f // -> 이게 되네
                             animateFlag = (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0))
                         }
                     }
@@ -225,12 +221,12 @@ fun <T>ScrollStackList(
                     itemsIndexed(items = content.child.drop(1), key = { childIndex, it -> it.key }) { childIndex, child ->
 
                         val density = LocalDensity.current
-                        var animateFlag by rememberSaveable { mutableStateOf(false) }
+                        var animateFlag by rememberSaveable { mutableStateOf(true) }
                         val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
                         val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
                         val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
                         val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-
+                        var alphaState by rememberSaveable { mutableStateOf(0f) }
                         var itemAppeared by rememberSaveable { mutableStateOf(false) }
 
                         LaunchedEffect(Unit) {
@@ -239,19 +235,17 @@ fun <T>ScrollStackList(
 
                         LaunchedEffect(scrollState) {
                             snapshotFlow {
-                                scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == child.key }?.offset ?: 0
+                                scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
                             }.collectLatest { offset ->
-                                if (offset == Integer.MAX_VALUE) {
-                                    animateFlag = true
-                                } else {
-                                    val offsetInDp = with(density) { offset.toDp() }
-                                    animateFlag = offsetInDp > threshold
-                                }
+
+                                val offsetInDp = with(density) { offset.toDp() }
+                                alphaState = if (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0)) 0f else 1f // -> 이게 되네
+                                animateFlag = (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0))
                             }
                         }
 
                         Box(
-                            modifier = childStackModifier.animateItemPlacement().alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
+                            modifier = childStackModifier.graphicsLayer { alpha = alphaState }.alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
                         ) {
                             /*
                             itemContent
