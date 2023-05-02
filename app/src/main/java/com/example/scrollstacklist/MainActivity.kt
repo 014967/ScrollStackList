@@ -3,25 +3,24 @@ package com.example.scrollstacklist
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideIn
-import androidx.compose.animation.slideOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,7 +55,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.example.scrollstacklist.ui.theme.ScrollStackListTheme
@@ -74,32 +72,32 @@ class MainActivity : ComponentActivity() {
             ScrollStackListTheme {
                 // A surface container using the 'background' color from the theme
                 Box(
-                    modifier = Modifier.fillMaxSize().background(color = Color.Blue),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(color = Color.Blue),
                 ) {
                     val dummyList = dummyList
                     val composeHeight = 50.dp
-                    val moreBarPadding = 5.dp
                     val spacerHeight = 4.dp
 
                     if (dummyList.size != 0) {
                         ScrollStackList(
                             modifier = Modifier
-                                .padding(bottom = 100.dp).align(BottomCenter),
+                                .padding(bottom = 100.dp)
+                                .align(BottomCenter),
                             stackItems = dummyList.toImmutableList(),
-                            itemContent = {
+                            itemContent = { child, color ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(composeHeight)
                                         .padding(horizontal = 10.dp)
-                                        .background(
-                                            color = Color.White,
-                                            shape = RoundedCornerShape(10.dp),
-                                        ),
+                                        .background(color = color, shape = RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(10.dp)),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
-                                    Text(text = it.item)
+                                    Text(text = child.item)
                                 }
                             },
                             topStackModifier = Modifier
@@ -114,7 +112,10 @@ class MainActivity : ComponentActivity() {
                                         .fillMaxSize(0.99f)
                                         .padding(horizontal = 10.dp)
                                         .padding(top = 3.dp)
-                                        .background(color = Color.White.copy(alpha = 0.8f), shape = RoundedCornerShape(10.dp))
+                                        .background(
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(10.dp),
+                                        )
                                         .clip(RoundedCornerShape(10.dp))
                                         .height(composeHeight),
                                 )
@@ -135,7 +136,7 @@ class MainActivity : ComponentActivity() {
 fun <T>ScrollStackList(
     modifier: Modifier = Modifier,
     stackItems: ImmutableList<Group<T>>,
-    itemContent: @Composable (Child<T>) -> Unit,
+    itemContent: @Composable (Child<T>, Color) -> Unit,
     moreItemContent: @Composable () -> Unit,
     topStackModifier: Modifier = Modifier,
     childStackModifier: Modifier = Modifier,
@@ -154,10 +155,13 @@ fun <T>ScrollStackList(
 
     val scrollState = rememberLazyListState()
 
+    val density = LocalDensity.current
     val configuration = LocalConfiguration.current
-    val screenHeight = configuration.screenHeightDp.dp
+    val screenHeight = with(density) {
+        configuration.screenHeightDp.dp.roundToPx()
+    }
     val threshold = screenHeight.times(0.8f)
-    val maxThreshold = screenHeight
+    println(threshold)
 
     LaunchedEffect(
         key1 = stackItems,
@@ -172,85 +176,105 @@ fun <T>ScrollStackList(
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        LazyColumn(
-            modifier = modifier,
-            state = scrollState,
-            verticalArrangement = Arrangement.spacedBy(spacerHeight),
+    when (isExpandedColumn) {
+        ExpandState.NONE -> {
+            NotificationSizeText(modifier, size = stackItems.size) {
+                isExpandedColumn = ExpandState.SMALL
+            }
+        }
+        else -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(
+                            BottomCenter,
+                        ),
+                ) {
+                    LazyColumn(
+                        state = scrollState,
+                        verticalArrangement = Arrangement.spacedBy(spacerHeight),
+                        contentPadding = PaddingValues(bottom = 200.dp),
+                    ) {
+                        stackItems.forEachIndexed { index, content ->
+                            item(key = index) {
+                                var animateFlag by rememberSaveable { mutableStateOf(true) }
+                                val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
+                                val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                var alphaState by rememberSaveable { mutableStateOf(0f) }
+                                val animateColor by animateColorAsState(
+                                    targetValue = if (animateFlag) { Color.Unspecified } else { Color.White },
+                                    label = "",
+                                )
 
-        ) {
-            stackItems.forEachIndexed { index, content ->
-                item(key = index) {
-                    val density = LocalDensity.current
-                    var animateFlag by rememberSaveable { mutableStateOf(true) }
-                    val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                    val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
-                    val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                    val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                    var alphaState by rememberSaveable { mutableStateOf(0f) }
-                    var itemAppeared by rememberSaveable { mutableStateOf(false) }
+                                LaunchedEffect(scrollState) {
+                                    snapshotFlow {
+                                        scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
+                                    }.collectLatest { offset ->
 
-                    LaunchedEffect(Unit) {
-                        itemAppeared = true
-                    }
+                                        alphaState = if (offset > threshold) 0f else 1f
+                                        animateFlag = (offset > threshold)
+                                    }
+                                }
 
-                    LaunchedEffect(scrollState) {
-                        snapshotFlow {
-                            scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
-                        }.collectLatest { offset ->
-
-                            val offsetInDp = with(density) { offset.toDp() }
-                            alphaState = if (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0)) 0f else 1f // -> 이게 되네
-                            animateFlag = (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0))
-                        }
-                    }
-
-                    LazyColumnItem(
-                        modifier = topStackModifier.graphicsLayer { alpha = alphaState }.alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
-                        content = content,
-                        itemAppeared = itemAppeared,
-                        expandableState = expandableState,
-                        itemContent = itemContent,
-                        moreItemContent = moreItemContent,
-                    )
-                }
-
-                if (expandableState.containsKey(content.key) && expandableState[content.key] == true && content.child.size != 1) {
-                    itemsIndexed(items = content.child.drop(1), key = { childIndex, it -> it.key }) { childIndex, child ->
-
-                        val density = LocalDensity.current
-                        var animateFlag by rememberSaveable { mutableStateOf(true) }
-                        val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                        val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
-                        val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                        val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
-                        var alphaState by rememberSaveable { mutableStateOf(0f) }
-                        var itemAppeared by rememberSaveable { mutableStateOf(false) }
-
-                        LaunchedEffect(Unit) {
-                            itemAppeared = true
-                        }
-
-                        LaunchedEffect(scrollState) {
-                            snapshotFlow {
-                                scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == index }?.offset ?: 0
-                            }.collectLatest { offset ->
-
-                                val offsetInDp = with(density) { offset.toDp() }
-                                alphaState = if (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0)) 0f else 1f // -> 이게 되네
-                                animateFlag = (offsetInDp > threshold || (offsetInDp == 0.dp && index != 0))
+                                LazyColumnItem(
+                                    modifier = topStackModifier
+                                        .animateItemPlacement()
+                                        .graphicsLayer { alpha = alphaState }
+                                        .alpha(animateAlpha)
+                                        .offset(y = animateOffset)
+                                        .scale(animateScale)
+                                        .zIndex(animateZIndex),
+                                    content = content,
+                                    expandableState = expandableState,
+                                    itemContent = itemContent,
+                                    moreItemContent = moreItemContent,
+                                    backgroundColor = animateColor,
+                                )
                             }
-                        }
 
-                        Box(
-                            modifier = childStackModifier.graphicsLayer { alpha = alphaState }.alpha(animateAlpha).offset(y = animateOffset).scale(animateScale).zIndex(animateZIndex),
-                        ) {
-                            /*
-                            itemContent
-                             */
-                            itemContent(child)
+                            if (expandableState.containsKey(content.key) && expandableState[content.key] == true && content.child.size != 1) {
+                                itemsIndexed(items = content.child.drop(1), key = { childIndex, it -> it.key }) { childIndex, child ->
+
+                                    var animateFlag by rememberSaveable { mutableStateOf(true) }
+                                    val animateScale by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                    val animateOffset by animateDpAsState(targetValue = if (animateFlag) { (-100).dp } else { 0.dp }, label = "")
+                                    val animateZIndex by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                    val animateAlpha by animateFloatAsState(targetValue = if (animateFlag) { 0f } else { 1f }, label = "")
+                                    var alphaState by rememberSaveable {
+                                        mutableStateOf(0f)
+                                    }
+                                    val animateColor by animateColorAsState(
+                                        targetValue = if (animateFlag) { Color.Transparent } else { Color.White },
+                                        label = "",
+                                    )
+
+                                    LaunchedEffect(scrollState) {
+                                        snapshotFlow {
+                                            scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == child.key }?.offset ?: 0
+                                        }.collectLatest { offset ->
+
+                                            alphaState = if (offset > threshold) 0f else 1f
+                                            animateFlag = (offset > threshold)
+                                        }
+                                    }
+
+                                    Box(
+                                        modifier = childStackModifier
+                                            .graphicsLayer { alpha = alphaState }
+                                            .alpha(animateAlpha)
+                                            .offset(y = animateOffset)
+                                            .scale(animateScale)
+                                            .heightIn(min = 0.dp)
+                                            .zIndex(animateZIndex),
+
+                                    ) {
+                                        itemContent(child, animateColor)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -262,14 +286,14 @@ fun <T>ScrollStackList(
 @Composable
 fun <T>LazyColumnItem(
     modifier: Modifier,
-    itemAppeared: Boolean,
     content: Group<T>,
+    backgroundColor: Color,
     expandableState: SnapshotStateMap<String, Boolean>,
-    itemContent: @Composable (Child<T>) -> Unit,
+    itemContent: @Composable (Child<T>, Color) -> Unit,
     moreItemContent: @Composable () -> Unit,
 
 ) {
-    AnimatedVisibility(
+    Box(
         modifier = modifier.clickable {
             if (expandableState.containsKey(content.key)) {
                 expandableState[content.key]?.let { flag ->
@@ -277,35 +301,19 @@ fun <T>LazyColumnItem(
                 }
             }
         },
-        visible = itemAppeared,
-        enter = fadeIn(),
     ) {
         if (expandableState.containsKey(content.key) && expandableState[content.key] == false && content.child.size != 1) {
             Row(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
-                AnimatedVisibility(
-                    visible = itemAppeared,
-                    modifier = Modifier.fillMaxWidth(),
-                    enter = slideIn(
-                        initialOffset = { IntOffset(0, (it.height / 2)) },
-                        animationSpec = spring(
-                            stiffness = Spring.StiffnessMediumLow,
-                            visibilityThreshold = IntOffset.VisibilityThreshold,
-                        ),
-                    ),
-                    exit = slideOut(
-                        targetOffset = { IntOffset(0, it.height / 2) },
-                    ),
-                ) {
-                    if (content.child.size >= 2) {
-                        moreItemContent()
-                    }
+
+                if (content.child.size >= 2) {
+                    moreItemContent()
                 }
             }
         }
-        itemContent(content.child[0])
+        itemContent(content.child[0], backgroundColor)
     }
 }
 
@@ -326,9 +334,15 @@ fun NotificationSizeText(
     updateExpandableColumn: (ExpandState) -> Unit,
 ) {
     Text(
-        modifier = modifier.clickable {
-            updateExpandableColumn(ExpandState.SMALL)
-        },
+        modifier = modifier.scrollable(
+            orientation = Orientation.Vertical,
+            state = rememberScrollableState { delta ->
+                if (delta < -20f) {
+                    updateExpandableColumn(ExpandState.SMALL)
+                }
+                delta
+            },
+        ),
         text = "알림이 ${size}개 있어요",
     )
 }
@@ -340,6 +354,9 @@ fun updateExpandable(expandableState: SnapshotStateMap<String, Boolean>, key: St
 }
 fun updateClickable(clickableState: SnapshotStateMap<String, Boolean>, key: String, flag: Boolean) {
     clickableState[key] = flag
+}
+fun updateOffsetState(offsetState: SnapshotStateMap<String, Int>, key: String, offset: Int) {
+    offsetState[key] = offset
 }
 
 data class DpState(var value: Dp)
