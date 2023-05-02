@@ -31,14 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -218,7 +214,6 @@ fun <T>ScrollStackList(
                                         animateFlag = (offset > threshold)
                                     }
                                 }
-
                                 LazyColumnItem(
                                     modifier = topStackModifier
                                         .animateItemPlacement()
@@ -355,20 +350,7 @@ fun updateExpandable(expandableState: SnapshotStateMap<String, Boolean>, key: St
 fun updateClickable(clickableState: SnapshotStateMap<String, Boolean>, key: String, flag: Boolean) {
     clickableState[key] = flag
 }
-fun updateOffsetState(offsetState: SnapshotStateMap<String, Int>, key: String, offset: Int) {
-    offsetState[key] = offset
-}
 
-data class DpState(var value: Dp)
-object DpStateSaver : Saver<MutableState<DpState>, Float> {
-    override fun restore(value: Float): MutableState<DpState>? {
-        return mutableStateOf(DpState(value.dp))
-    }
-
-    override fun SaverScope.save(value: MutableState<DpState>): Float? {
-        return value.value.value.value
-    }
-}
 val dummyList: MutableList<Group<String>> = mutableListOf<Group<String>>().apply {
     (1..100).forEach {
         add(
