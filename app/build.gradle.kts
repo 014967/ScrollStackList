@@ -19,6 +19,15 @@ android {
             useSupportLibrary = true
         }
     }
+   signingConfigs {
+       create("release") {
+           storeFile  = file("test.keystore")
+           storePassword  = "bms28292"
+           keyAlias =  "key0"
+           keyPassword  =  "bms28292"
+
+       }
+   }
 
     buildTypes {
         release {
@@ -27,6 +36,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
